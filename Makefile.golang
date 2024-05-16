@@ -1,0 +1,223 @@
+GO?=go
+EVERYTHING=./...
+
+GOBUILD_ARGS?=-ldflags="-s -w"
+GOBUILD_ARGS+=-trimpath
+GOTEST_TIMEOUT?=15s
+GOBENCH_TARGET?=.
+GOBENCH_TIME?=2s
+GOBENCH_COUNT?=3
+
+APPS?=$(patsubst $(CMD_DIR)/%/.,%,$(wildcard $(CMD_DIR)/*/.))
+EXE=$(patsubst %,$(BIN_DIR)/%$(BIN_SUFFIX),$(APPS))
+CMD_DIR?=./cmd
+BIN_DIR?=bin
+BIN_SUFFIX?=@$(GOOS)-$(GOARCH)$(GOEXE)
+
+GOARCH:=$(shell $(GO) env GOARCH)
+GOEXE:=$(shell $(GO) env GOEXE)
+GOOS:=$(shell $(GO) env GOOS)
+GOPATH:=$(shell $(GO) env GOPATH)
+GOROOT:=$(shell $(GO) env GOROOT)
+
+LDD_CHECK?=&&
+ifdef GOBUILD_ALLOW_DYNLIBS
+LDD_CHECK=;
+endif
+ifndef CGO_ENABLED
+export CGO_ENABLED=0
+endif
+
+.PHONY: build
+build: $(EXE)  ## compile all binaries
+
+$(EXE): $(shell find . -type f -iname '*.go') go.sum
+	$(GO) build $(GOBUILD_ARGS) -o $@ ./cmd/$(subst $(BIN_SUFFIX),,$(notdir $@))
+	@echo ldd $@
+	@! ldd $@ $(LDD_CHECK) true
+	@echo Reproducibility information:
+	@file $@
+	@grep -aoP '\bgo1\.\d+\.?\d*\b|(?<=COMPILER=)[\w\.-]+|GCC:[^\0]+' $@ | sort -ru
+	@grep -aoP 'build\t.*\b' $@ | sort -u
+	sha256sum $@
+
+.PHONY: $(RUNNERS)
+RUNNERS=$(patsubst %,run-%,$(APPS))
+$(RUNNERS): $(EXE)  ## run binaries
+	$(patsubst run-%,$(BIN_DIR)/%$(BIN_SUFFIX),$@) $(ARGS)
+
+.PHONY: build-all
+build-all:  ## build all OS/architectures
+	GOOS=linux   GOARCH=amd64 $(MAKE) build
+	GOOS=linux   GOARCH=arm64 $(MAKE) build
+	GOOS=windows GOARCH=amd64 $(MAKE) build
+	GOOS=windows GOARCH=arm64 $(MAKE) build
+	GOOS=darwin  GOARCH=amd64 $(MAKE) build
+	GOOS=darwin  GOARCH=arm64 $(MAKE) build
+
+.PHONY: fmt
+fmt:  ## format Go code
+	$(GO) fmt $(EVERYTHING)
+	"$(GOROOT)/bin/gofmt" -l -w .
+
+go.sum: go.mod
+	$(GO) mod tidy
+	@touch $@
+
+.PHONY: update
+update:  ## update Go packages this project depends on
+	$(GO) get -u all
+	@touch go.mod
+
+.PHONY: ci
+ci:  ## run continuous integration checks
+ci: lint test bench-quick build
+
+.PHONY: test test-verbose test-short
+test:  ## run automated tests
+GOTEST_ARGS+=-shuffle=on
+test-verbose:  ## run tests with increased verbosity
+test-verbose: GOTEST_ARGS+=-v --count=1
+test-short: ## run only short tests (faster)
+test-short: GOTEST_ARGS+=--short
+test test-verbose test-short: go.sum
+	$(GO) test $(EVERYTHING) -timeout $(GOTEST_TIMEOUT) $(GOTEST_ARGS)
+
+.PHONY: bench
+bench:  ## run benchmarks
+	$(GO) test $(EVERYTHING) \
+		-bench=$(GOBENCH_TARGET) \
+		-benchmem \
+		-benchtime=$(GOBENCH_TIME) \
+		-count=$(GOBENCH_COUNT) \
+		-timeout=0 \
+		-run='^#'
+
+.PHONY: bench-quick
+bench-quick:  ## run a single iteration of each benchmark
+	$(GO) test $(EVERYTHING) -bench=. -benchmem -benchtime=1x -run='^#'
+
+STATICCHECK=$(GOPATH)/bin/staticcheck$(GOEXE)
+$(STATICCHECK):
+	$(GO) install honnef.co/go/tools/cmd/staticcheck@latest
+
+ERRCHECK=$(GOPATH)/bin/errcheck$(GOEXE)
+$(ERRCHECK):
+	$(GO) install github.com/kisielk/errcheck@latest
+
+.PHONY: lint
+lint: $(STATICCHECK) $(ERRCHECK)
+lint:  ## run linters
+	"$(GOROOT)/bin/gofmt" -d .
+	@test -z "$$("$(GOROOT)/bin/gofmt" -l .)"
+	$(GO) vet $(EVERYTHING)
+	$(STATICCHECK) $(EVERYTHING)
+	$(ERRCHECK) $(EVERYTHING)
+
+DELVE=$(GOPATH)/bin/dlv$(GOEXE)
+$(DELVE):
+	$(GO) install github.com/go-delve/delve/cmd/dlv@latest
+
+.PHONY: debug delve
+DEBUG_FILE?=$(shell find -name '*.go' -printf "%T@ %p\n" | awk '{ if (max < $$1) { max = $$1; file = $$2 } } END { print file; }')
+DEBUG_ACTION?=$(shell awk '/^package/ { print ($$2 == "main") ? "debug" : "test"; exit; }' $(DEBUG_FILE))
+INTO?=$(DEBUG_ACTION) $(abspath $(dir $(DEBUG_FILE)))
+debug delve: $(DELVE)  ## start interactive debugger
+	$(DELVE) $(INTO)
+
+.PHONY: debug-core
+debug-core: CORE?=core.$(PID)
+debug-core: EXE=$(shell readlink /proc/$(PID)/exe)
+debug-core: $(DELVE)  ## dump and debug process memory
+	@test "$(CORE)" != "core." || { echo 'Variable not defined: PID'; exit 1; }
+	@test -n "$(EXE)" || { echo 'Variable not defined: EXE'; exit 1; }
+	@test -f "$(CORE)" || gcore -o core $(PID)
+	$(DELVE) core "$(EXE)" "$(CORE)"
+
+.PHONY: debug-build
+debug-build:  ## build binaries without optimization
+	$(MAKE) build GOBUILD_ARGS=
+
+CLOC=$(GOPATH)/bin/gocloc$(GOEXE)
+$(CLOC):
+	$(GO) install github.com/hhatto/gocloc/cmd/gocloc@latest
+
+.PHONY: loc
+loc: $(CLOC)  ## count lines of code
+	$(CLOC) .
+
+.PHONY: upx
+UPX_TOOL?=upx
+UPX?=--best --lzma
+upx: $(EXE)  ## compress executables with upx
+ifneq ($(strip $(EXE)),)
+	$(UPX_TOOL) $(UPX) $(EXE)
+endif
+
+.PHONY: clean
+CLEAN+=$(EXE)
+clean:  ## remove build artifacts
+ifneq ($(strip $(CLEAN)),)
+	$(RM) -r $(CLEAN)
+endif
+
+GOMODULE=$(shell awk '/^[^[:alnum:]]*module[^[:alnum:]]/ { print $$2; exit; }' go.mod)
+define import_tree_awk
+BEGIN {
+	print "strict digraph import_tree {";
+	module = "$(GOMODULE)";
+	match(module, /\/[^/]*$$/);
+	if (RSTART == 0) {
+		top = module;
+	} else {
+		top = substr(module, RSTART+1, length(module)-RSTART);
+	};
+}
+END {
+	if (seen_top) printf("\t{ rank=source; \"%s\"; }\n", top);
+	print "}";
+}
+/\.go:/ {
+	match($$1, /[^/]*$$/);
+	parent = substr($$1, 0, RSTART-2);
+	if (parent == "") parent = top;
+
+	child = substr($$2, length(module)+3, length($$2)-length(module)-3);
+	if (child == "") child = top;
+
+	if (parent == top || child == top) {
+		seen_top = 1;
+	};
+
+	print "\t\"" parent "\" -> \"" child "\"";
+}
+endef
+export import_tree_awk
+.PHONY: import-tree
+import-tree:  ## print import tree in Graphviz dot format
+	@git grep -P '^\s*(import|)\s*"$(GOMODULE)' | sort -u | awk "$$import_tree_awk"
+
+.PHONY: help
+help:  ## show help message
+	@awk "$$HELP_AWK" $(MAKEFILE_LIST)
+
+define HELP_AWK
+BEGIN {
+	width = 12;
+	print("Available targets:");
+}
+/  ##/ {
+	if (!match($$0, /:/)) next;
+
+	match($$0, /^[^:]+:/);
+	target = substr($$0, RSTART, RLENGTH-1);
+	gsub(" ", ",", target);
+	if (length(target) > width) width = length(target);
+
+	match($$0, /  ## /);
+	help = substr($$0, RSTART + RLENGTH);
+
+	printf("  %-*s %s\n", width+1, target, help);
+}
+endef
+export HELP_AWK
