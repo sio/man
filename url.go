@@ -33,7 +33,7 @@ func URL(query string) (*url.URL, error) {
 	}
 	prefix, found := strings.CutSuffix(url.Path, ".html")
 	if !found {
-		return nil, fmt.Errorf("suffix not found (.html): %s", url)
+		return nil, fmt.Errorf("manpage not found: %s", url)
 	}
 	url.Path = prefix + ".gz"
 	return url, nil

@@ -35,10 +35,12 @@ func usage() {
 	_, _ = fmt.Fprintf(
 		os.Stderr,
 		`usage: %[1]s [SECTION] MANPAGE
+
 Examples:
 	%[1]s man
 	%[1]s 2 flock
-	%[1]s bookworm/ddrescue`,
+	%[1]s bookworm/ddrescue
+`,
 		os.Args[0],
 	)
 }
