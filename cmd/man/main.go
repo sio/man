@@ -8,11 +8,7 @@ import (
 )
 
 func main() {
-	url, err := man.URL(query())
-	if err != nil {
-		fail(err)
-	}
-	err = man.Render(url)
+	err := man.Render(query())
 	if err != nil {
 		fail(err)
 	}

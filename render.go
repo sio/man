@@ -1,16 +1,18 @@
 package man
 
 import (
+	"bytes"
 	"fmt"
-	"net/url"
+	"io"
 	"os"
 	"os/exec"
+	"strings"
 
 	"golang.org/x/term"
 )
 
-// Render a man page from given URL
-func Render(from *url.URL) error {
+// Render a man page
+func Render(query string) error {
 	rendererCmd, err := getRenderer()
 	if err != nil {
 		return err
@@ -20,14 +22,24 @@ func Render(from *url.URL) error {
 		return err
 	}
 
+	from, err := URL(query)
+	if err != nil {
+		return err
+	}
 	resp, err := client.Get(from.String())
 	if err != nil {
 		return err
 	}
 	defer func() { _ = resp.Body.Close() }()
 
+	header := new(bytes.Buffer)
+	_, err = fmt.Fprintf(header, `.TH "manpages.debian.org " "%s"%s`, strings.ReplaceAll(query, `"`, ""), "\n")
+	if err != nil {
+		return err
+	}
+
 	renderer := exec.Command(rendererCmd[0], rendererCmd[1:]...)
-	renderer.Stdin = resp.Body
+	renderer.Stdin = io.MultiReader(header, resp.Body)
 	pipe, err := renderer.StdoutPipe()
 	if err != nil {
 		return err
