@@ -97,6 +97,7 @@ func getRenderer() ([]string, error) {
 		if err != nil {
 			return nil, err
 		}
+		width--
 	}
 	return []string{groff, "-Tutf8", "-man", fmt.Sprintf("-rLL=%dn", width), fmt.Sprintf("-rLT=%dn", width)}, nil
 }
