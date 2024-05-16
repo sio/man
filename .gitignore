@@ -1,0 +1,4 @@
+bin/
+__debug*
+*.test
+core.*
