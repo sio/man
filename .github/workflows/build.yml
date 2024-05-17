@@ -21,7 +21,13 @@ jobs:
           key: golang-${{ runner.os }}-${{ hashFiles('**/go.sum') }}
           restore-keys: |
             golang-${{ runner.os }}
-      - run: make ci
+      - name: Setup CI runner
+        run: |-
+          git config --global --add safe.directory $PWD
+          apt-get update
+          apt-get install -y --no-install-recommends file
+      - name: Execute CI checks
+        run: make ci
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -40,7 +46,13 @@ jobs:
       - uses: actions/checkout@v3
         with:
           fetch-depth: 0
-      - run: |-
+      - name: Setup CI runner
+        run: |-
+          git config --global --add safe.directory $PWD
+          apt-get update
+          apt-get install -y --no-install-recommends file
+      - name: Build release
+        run: |-
           git clean -fdx
           mkdir -p bin
           make build-all 2>&1 | tee bin/reproducibility.log
