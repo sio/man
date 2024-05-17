@@ -54,6 +54,10 @@ Copyright 2024 Vitaly Potyarkin
 
 - Some manpages are not rendered correctly (try `groff_man`). This may or may
   not turn out to be an [upstream] bug. Needs further investigation.
+
+- Relative include directives do not work.
+  Try `ash`: <https://manpages.debian.org/bookworm/ash/ash.1.en.gz>
+
 - Almost 5MB is a rather large size for this simple tool.
   It may have even been just a single pipe of `curl | groff | less`.
   Can this be reimplemented in something like Python (stdlib-only) to simplify
