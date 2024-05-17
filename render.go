@@ -119,8 +119,9 @@ func setupRenderer(title, url string, input io.Reader) (*exec.Cmd, error) {
 
 	renderer := exec.Command(
 		groff,
+		"-mtty-char",
 		"-Tutf8",
-		"-man",
+		"-mandoc",
 		fmt.Sprintf("-rLL=%dn", width),
 		fmt.Sprintf("-rLT=%dn", width),
 	)
