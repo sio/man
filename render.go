@@ -13,10 +13,6 @@ import (
 
 // Render a man page
 func Render(query string) error {
-	pager, err := getPager()
-	if err != nil {
-		return err
-	}
 	url, err := URL(query)
 	if err != nil {
 		return err
@@ -26,18 +22,55 @@ func Render(query string) error {
 		return err
 	}
 	defer func() { _ = resp.Body.Close() }()
-	renderer, err := setupRenderer(query, url, resp.Body)
+	width := getOutputWidth()
+	page := addHeader(resp.Body, query, url, width)
+
+	retry, err := showMan(page)
+	if !retry {
+		return err
+	}
+	return showGroff(page, width)
+}
+
+// Show manpage using system man viewer
+func showMan(page io.Reader) (retry bool, err error) {
+	exe, err := exec.LookPath("man")
+	if err != nil {
+		return true, err
+	}
+	man := exec.Command(exe, "-l", "-")
+	man.Stdin = page
+	man.Stdout = os.Stdout
+	return false, man.Run()
+}
+
+// Render manpage with groff and show it in pager
+func showGroff(page io.Reader, width int) error {
+	groff, err := exec.LookPath("groff")
 	if err != nil {
 		return err
 	}
-	pipe, err := renderer.StdoutPipe()
+	formatter := exec.Command(
+		groff,
+		"-mtty-char",
+		"-Tutf8",
+		"-mandoc",
+		fmt.Sprintf("-rLL=%dn", width),
+		fmt.Sprintf("-rLT=%dn", width),
+	)
+	formatter.Stdin = page
+	pipe, err := formatter.StdoutPipe()
 	if err != nil {
 		return err
 	}
 	defer func() { _ = pipe.Close() }()
+	pager, err := getPager()
+	if err != nil {
+		return err
+	}
 	pager.Stdin = pipe
 	pager.Stdout = os.Stdout
-	err = renderer.Start()
+	err = formatter.Start()
 	if err != nil {
 		return err
 	}
@@ -49,7 +82,7 @@ func Render(query string) error {
 	if err != nil {
 		return err
 	}
-	err = renderer.Wait()
+	err = formatter.Wait()
 	if err != nil {
 		return err
 	}
@@ -82,29 +115,13 @@ func getPager() (*exec.Cmd, error) {
 	return nil, fmt.Errorf("pager detection failed")
 }
 
-func setupRenderer(title, url string, input io.Reader) (*exec.Cmd, error) {
-	groff, err := exec.LookPath("groff")
-	if err != nil {
-		return nil, err
-	}
-
-	fd := int(os.Stdout.Fd())
-	width := 79
-	if term.IsTerminal(fd) {
-		width, _, err = term.GetSize(fd)
-		if err != nil {
-			return nil, err
-		}
-		width--
-	}
-
+func addHeader(page io.Reader, title, url string, width int) io.Reader {
 	url, ok := strings.CutSuffix(url, ".gz")
 	if ok {
 		url += ".html"
 	}
-
 	header := new(bytes.Buffer)
-	_, err = fmt.Fprintf(
+	_, err := fmt.Fprintf(
 		header,
 		`.lt %dn
 .tl 'Debian Manpages (%s)''\fI\,%s\/\fR'
@@ -114,17 +131,22 @@ func setupRenderer(title, url string, input io.Reader) (*exec.Cmd, error) {
 		title,
 		url)
 	if err != nil {
-		return nil, err
+		panic("writing to in-memory buffer failed")
 	}
+	return io.MultiReader(header, page)
+}
 
-	renderer := exec.Command(
-		groff,
-		"-mtty-char",
-		"-Tutf8",
-		"-mandoc",
-		fmt.Sprintf("-rLL=%dn", width),
-		fmt.Sprintf("-rLT=%dn", width),
-	)
-	renderer.Stdin = io.MultiReader(header, input)
-	return renderer, nil
+func getOutputWidth() int {
+	const defaultWidth = 80
+	width := defaultWidth
+	fd := int(os.Stdout.Fd())
+	if term.IsTerminal(fd) {
+		var err error
+		width, _, err = term.GetSize(fd)
+		if err != nil {
+			width = defaultWidth
+		}
+	}
+	width -= 1
+	return width
 }

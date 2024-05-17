@@ -1,3 +1,3 @@
-run-man: ARGS="ddrescue"
+run-man: ARGS=ddrescue
 
 include Makefile.golang
