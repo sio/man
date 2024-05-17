@@ -40,6 +40,8 @@ jobs:
   release:
     if: startsWith(github.event.ref, 'refs/tags/v')
     needs: build
+    permissions:
+      contents: write
     runs-on: ubuntu-latest
     container: golang:latest
     steps:
