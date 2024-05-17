@@ -70,7 +70,13 @@ func getPager() (*exec.Cmd, error) {
 	for _, pager := range pagers {
 		pager, err := exec.LookPath(pager)
 		if err == nil {
-			return exec.Command(pager), nil
+			cmd := exec.Command(pager)
+			cmd.Env = append(
+				os.Environ(),
+				fmt.Sprintf("LESS=-ix7R%s", os.Getenv("LESS")),
+				"LESSCHARSET=utf-8",
+			)
+			return cmd, nil
 		}
 	}
 	return nil, fmt.Errorf("pager detection failed")
