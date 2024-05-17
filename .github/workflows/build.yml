@@ -1,0 +1,48 @@
+name: build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache/
+            ~/go/
+          key: golang-${{ runner.os }}-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            golang-${{ runner.os }}
+      - run: make ci
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          path: |
+            ${{ github.workspace }}/bin/
+          name: binaries
+          retention-days: 1
+          if-no-files-found: ignore
+
+  release:
+    if: startsWith(github.event.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - run: |-
+          git clean -fdx
+          mkdir -p bin
+          make build-all 2>&1 | tee bin/reproducibility.log
+          cd bin; sha256sum * | tee SHA256SUMS
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: bin/*
