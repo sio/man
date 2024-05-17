@@ -34,14 +34,36 @@ func Render(query string) error {
 
 // Show manpage using system man viewer
 func showMan(page io.Reader) (retry bool, err error) {
-	exe, err := exec.LookPath("man")
+	manViewer, err := exec.LookPath("man")
 	if err != nil {
 		return true, err
 	}
-	man := exec.Command(exe, "-l", "-")
+	if isCurrentExe(manViewer) {
+		return true, fmt.Errorf("'man' in $PATH is pointing to this online viewer")
+	}
+	man := exec.Command(manViewer, "-l", "-")
 	man.Stdin = page
 	man.Stdout = os.Stdout
 	return false, man.Run()
+}
+
+func isCurrentExe(path string) bool {
+	exe, err := os.Executable()
+	if err != nil {
+		return false
+	}
+	if exe == path {
+		return true
+	}
+	this, err := os.Stat(exe)
+	if err != nil {
+		return false
+	}
+	other, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+	return os.SameFile(this, other)
 }
 
 // Render manpage with groff and show it in pager
