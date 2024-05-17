@@ -8,6 +8,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    container: golang:latest
     steps:
       - uses: actions/checkout@v3
         with:
@@ -34,6 +35,7 @@ jobs:
     if: startsWith(github.event.ref, 'refs/tags/v')
     needs: build
     runs-on: ubuntu-latest
+    container: golang:latest
     steps:
       - uses: actions/checkout@v3
         with:
