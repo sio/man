@@ -23,7 +23,7 @@ This is just a simple client for <https://manpages.debian.org>
 
 ## Installation
 
-  - Build and install with Go: `go install github.com/sio/man@latest`
+  - Build and install with Go: `go install github.com/sio/man/cmd/man@latest`
 
   - Prebuilt binaries are also available in [GitHub Releases](https://github.com/sio/man/releases).
 
