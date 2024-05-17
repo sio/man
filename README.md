@@ -58,5 +58,6 @@ Copyright 2024 Vitaly Potyarkin
   It may have even been just a single pipe of `curl | groff | less`.
   Can this be reimplemented in something like Python (stdlib-only) to simplify
   builds and distribution?
+  Will distributing a Python script be simpler compared to a (large-ish) static binary?
 
 [upstream]: https://github.com/Debian/debiman/
