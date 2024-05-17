@@ -15,8 +15,8 @@ func TestURL(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if url.String() != result {
-				t.Errorf("unexpected result:\nwant %s\n got %s", result, url.String())
+			if url != result {
+				t.Errorf("unexpected result:\nwant %s\n got %s", result, url)
 			}
 		})
 	}

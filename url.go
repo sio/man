@@ -3,7 +3,6 @@ package man
 import (
 	"fmt"
 	"net/http"
-	"net/url"
 	"strings"
 	"time"
 )
@@ -18,23 +17,23 @@ var client = &http.Client{
 }
 
 // Search manpages.debian.org for a manual and return its URL
-func URL(query string) (*url.URL, error) {
+func URL(query string) (string, error) {
 	head, err := client.Head(repository + "/" + query)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 	defer func() { _ = head.Body.Close() }()
 	if head.StatusCode < 300 || head.StatusCode > 399 {
-		return nil, fmt.Errorf("did not get a redirect for %q: %s", query, head.Status)
+		return "", fmt.Errorf("did not get a redirect for %q: %s", query, head.Status)
 	}
 	url, err := head.Location()
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 	prefix, found := strings.CutSuffix(url.Path, ".html")
 	if !found {
-		return nil, fmt.Errorf("manpage not found: %s", url)
+		return "", fmt.Errorf("manpage not found: %s", url)
 	}
 	url.Path = prefix + ".gz"
-	return url, nil
+	return url.String(), nil
 }

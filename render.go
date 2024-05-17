@@ -13,48 +13,39 @@ import (
 
 // Render a man page
 func Render(query string) error {
-	rendererCmd, err := getRenderer()
+	pager, err := getPager()
 	if err != nil {
 		return err
 	}
-	pagerCmd, err := getPager()
+	url, err := URL(query)
 	if err != nil {
 		return err
 	}
-
-	from, err := URL(query)
-	if err != nil {
-		return err
-	}
-	resp, err := client.Get(from.String())
+	resp, err := client.Get(url)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = resp.Body.Close() }()
-
-	header := new(bytes.Buffer)
-	_, err = fmt.Fprintf(header, `.TH "manpages.debian.org " "%s"%s`, strings.ReplaceAll(query, `"`, ""), "\n")
+	renderer, err := setupRenderer(query, url, resp.Body)
 	if err != nil {
 		return err
 	}
-
-	renderer := exec.Command(rendererCmd[0], rendererCmd[1:]...)
-	renderer.Stdin = io.MultiReader(header, resp.Body)
 	pipe, err := renderer.StdoutPipe()
 	if err != nil {
 		return err
 	}
 	defer func() { _ = pipe.Close() }()
-
-	pager := exec.Command(pagerCmd)
 	pager.Stdin = pipe
 	pager.Stdout = os.Stdout
-
 	err = renderer.Start()
 	if err != nil {
 		return err
 	}
 	err = pager.Run()
+	if err != nil {
+		return err
+	}
+	err = pipe.Close()
 	if err != nil {
 		return err
 	}
@@ -65,7 +56,7 @@ func Render(query string) error {
 	return nil
 }
 
-func getPager() (string, error) {
+func getPager() (*exec.Cmd, error) {
 	var pagers []string
 	for _, env := range []string{"MANPAGER", "PAGER"} {
 		value := os.Getenv(env)
@@ -79,17 +70,18 @@ func getPager() (string, error) {
 	for _, pager := range pagers {
 		pager, err := exec.LookPath(pager)
 		if err == nil {
-			return pager, nil
+			return exec.Command(pager), nil
 		}
 	}
-	return "", fmt.Errorf("pager detection failed")
+	return nil, fmt.Errorf("pager detection failed")
 }
 
-func getRenderer() ([]string, error) {
+func setupRenderer(title, url string, input io.Reader) (*exec.Cmd, error) {
 	groff, err := exec.LookPath("groff")
 	if err != nil {
 		return nil, err
 	}
+
 	fd := int(os.Stdout.Fd())
 	width := 79
 	if term.IsTerminal(fd) {
@@ -99,5 +91,33 @@ func getRenderer() ([]string, error) {
 		}
 		width--
 	}
-	return []string{groff, "-Tutf8", "-man", fmt.Sprintf("-rLL=%dn", width), fmt.Sprintf("-rLT=%dn", width)}, nil
+
+	url, ok := strings.CutSuffix(url, ".gz")
+	if ok {
+		url += ".html"
+	}
+
+	header := new(bytes.Buffer)
+	_, err = fmt.Fprintf(
+		header,
+		`.lt %dn
+.tl 'Debian Manpages (%s)''\fI\,%s\/\fR'
+
+`,
+		width,
+		title,
+		url)
+	if err != nil {
+		return nil, err
+	}
+
+	renderer := exec.Command(
+		groff,
+		"-Tutf8",
+		"-man",
+		fmt.Sprintf("-rLL=%dn", width),
+		fmt.Sprintf("-rLT=%dn", width),
+	)
+	renderer.Stdin = io.MultiReader(header, input)
+	return renderer, nil
 }
