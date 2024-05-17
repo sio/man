@@ -25,7 +25,7 @@ This is just a simple client for <https://manpages.debian.org>
 
   - Build and install with Go: `go install github.com/sio/man@latest`
 
-  - Prebuilt binaries are also available in GitHub Releases.
+  - Prebuilt binaries are also available in [GitHub Releases](https://github.com/sio/man/releases).
 
     The build process is reproducible.
     Use your own judgement to decide whether to trust the binaries publshed there.
@@ -54,8 +54,8 @@ Copyright 2024 Vitaly Potyarkin
 
 - Some manpages are not rendered correctly (try `groff_man`). This may or may
   not turn out to be an [upstream] bug. Needs further investigation.
-- Almost 5MB is a rather large size for this simple tool. It may have even
-  been just a single pipe of `curl ... | groff ... | less`.r
+- Almost 5MB is a rather large size for this simple tool.
+  It may have even been just a single pipe of `curl | groff | less`.
   Can this be reimplemented in something like Python (stdlib-only) to simplify
   builds and distribution?
 
