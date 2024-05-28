@@ -31,6 +31,17 @@ This is just a simple client for <https://manpages.debian.org>
     Use your own judgement to decide whether to trust the binaries publshed there.
 
 
+## Using this tool to complement OS provided manpages
+
+Replace `man` in your shell with the following function:
+
+```bash
+man() {
+    command man "$@" || /path/to/this/man "$@"
+}
+```
+
+
 ## License and copyright
 
 Copyright 2024 Vitaly Potyarkin
